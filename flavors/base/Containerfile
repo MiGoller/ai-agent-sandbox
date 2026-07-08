@@ -1,0 +1,28 @@
+# ==============================================================================
+# BASE IMAGE: Secure, hardened foundation for AI CLI Agents
+# ==============================================================================
+FROM ubuntu:24.04
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# 1. Update system and install essential CLI tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    git \
+    jq \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# 2. Security hardening: Create an unprivileged user named 'agent'
+# AI agents should NEVER run as root inside the container.
+RUN useradd -m -s /bin/bash agent
+
+# 3. Setup the workspace directory with correct permissions
+WORKDIR /workspace
+RUN chown agent:agent /workspace
+
+# Switch to the secure unprivileged user by default
+USER agent
+
+CMD ["/bin/bash"]

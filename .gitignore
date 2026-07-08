@@ -1,0 +1,298 @@
+# ==============================================================================
+# AI Agent Sandbox - .gitignore for Container Build & Runtime
+# ==============================================================================
+# This file ignores build artifacts, cached container files and
+# agent-specific runtime data that doesn't belong in the source code
+# ==============================================================================
+
+# ---------------------------------------------------------------------------
+# CONTAINER BUILD ARTIFACTS & CACHE
+# ---------------------------------------------------------------------------
+
+# Build artifacts from Podman (similar to Docker images/cache)
+*.tar
+*.tar.gz
+
+# Build artifacts in container directories
+flavors/base/image/
+flavors/python-hermes/image/
+
+# ---------------------------------------------------------------------------
+# PODMAN IMAGES & LOCAL CACHE
+# ---------------------------------------------------------------------------
+
+# Podman image names defined in run.sh
+ai-agent-sandbox:base
+ai-agent-sandbox:*
+
+# Podman Container names (unique per instance)
+ai-agent-jail-*
+
+# ---------------------------------------------------------------------------
+# LAUNCHER-SCRIPT INTERMEDIATE FILES
+# ---------------------------------------------------------------------------
+
+# Temporary files from run.sh
+*.log
+tmp/
+/*.log
+
+# ---------------------------------------------------------------------------
+# AGENT-SPECIFIC DATA (Persistent, but version controlled? No)
+# ---------------------------------------------------------------------------
+
+# Hermes sandbox data directory (mounted from host)
+.hermes_sandbox_data/
+
+# Calculated/processed files from agents (only learning-specific)
+.history-
+.bash_history
+
+# ---------------------------------------------------------------------------
+# SYSTEM FURTHER FILES
+# ---------------------------------------------------------------------------
+
+# System login information (if generated)
+*passwd*
+*shadow*
+*group*
+
+# Host/system metadata that probably shouldn't change
+*.pid
+*.sqlite
+*.db
+
+# ---------------------------------------------------------------------------
+# IDE & EDITOR SETTINGS (project specific excluded)
+# ---------------------------------------------------------------------------
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# JetBrains IDEs
+.idea/
+*.iml
+*.iws
+
+# Vim
+swap*
+*.swo
+*.swp
+
+# Emacs
+*~
+# ---------------------------------------------------------------------------
+# PYTHON-PIP-SPECIFIC
+# ---------------------------------------------------------------------------
+
+# Python virtual environments
+venv/
+venv/  # Fallback
+.venv/
+
+# Python pip cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+.pytest_cache/
+coverage/
+htmlcov/
+
+# Lazy pip
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ---------------------------------------------------------------------------
+# NODE/NPM-SPECIFIC
+# ---------------------------------------------------------------------------
+
+# npm cache & log
+dev.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ---------------------------------------------------------------------------
+# TEST/REPORT FILES
+# ---------------------------------------------------------------------------
+
+# Test reports
+junit*.xml
+*test*
+*coverage*
+
+# ---------------------------------------------------------------------------
+# SENSITIVE / WILL BE CREATED AT RUNTIME
+# ---------------------------------------------------------------------------
+
+# Network keys, tokens and secrets (entered environment variables won't be stored)
+.env.*.local
+.env
+*.key
+*.pem
+*.crt
+*.p12
+*.pfx
+
+# ---------------------------------------------------------------------------
+# GIT-SPECIFIC
+# ---------------------------------------------------------------------------
+
+# Credentials/Tokens that may be integrated via Windows integration
+.git-credentials
+.git-credentials.url
+
+# Large text files
+*.patch
+*.orig
+*.rej
+
+# Compiled object files
+*.o
+*.a
+*.so
+
+# Hidden files that describe the build
+__version__
+
+# ---------------------------------------------------------------------------
+# BEWARE: DON'T IGNORE WHAT WILL NEED DATA EXCHANGE
+# ---------------------------------------------------------------------------
+
+# This repo deliberately stores mounted data. If you want to add config files for
+# the agent food (like .gemini-moi, CLI flags, etc.) to git,
+# add them and consider using .git/info/exclude for repository-specific ignore tokens.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# AI / MACHINE LEARNING FILES
+# ---------------------------------------------------------------------------
+
+# Model files, calibration data and similar artifacts that are only local
+*.pt
+*.pth
+*.pkl
+*.model
+*.ckpt
+*.bin
+
+# Feature vectors, embeddings and training data
+*.jsonl
+*.csv
+
+# Jupyter Notebooks (if ever used)
+.ipynb_checkpoints/
+*.ipynb*
+
+# Neural network layer files
+*.h5
+*.keras
+*.hdf5
+
+# ---------------------------------------------------------------------------
+# LOCAL SYSTEMS AND TOOLS
+# ---------------------------------------------------------------------------
+
+# Homebrew (macOS)
+/Library/Archives
+/var/tmp
+/Sources
+
+# Homebrew austec (macOS)
+/etc/asl/*
+
+# macOS-specific block
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# SQLite formate (if used)
+*.sqlite3
+
+# ---------------------------------------------------------------------------
+# COMPRESSOR / BISON FILES
+# ---------------------------------------------------------------------------
+
+y.tab.c
+y.tab.h
+y.tab.cpp
+*.lex
+
+# ---------------------------------------------------------------------------
+# TEMPORARY & BACKUP FILES
+# ---------------------------------------------------------------------------
+
+# Temporary directories and files
+tmp/
+/tmp
+*.tmp
+*.temp
+
+# Backup files
+*.backup
+*.bak
+*.old
+
+# IDE and editor backups
+*.swp
+*swp*
+
+# ---------------------------------------------------------------------------
+# CONTAINER RUNTIME LOGS
+# ---------------------------------------------------------------------------
+
+# Container runtime logs
+run.log
+launch.log
+agent.log
+
+# Configuration and runtime files
+*.conf
+*.config
+
+# LLM preferences and agent configs
+.gemini-orm*
+.cursor*
+.tmux*
+
+# ---------------------------------------------------------------------------
+# BUILD & DISTRIBUTION ARTIFACTS
+# ---------------------------------------------------------------------------
+
+# Build distribution directories
+dist/
+output/
+
+# ---------------------------------------------------------------------------
+# HOST-MOUNTED ENVIRONMENT
+# ---------------------------------------------------------------------------
+
+# Environment flags from host integration
+env-flag.txt
+
+# Git obfuscation files
+.gitignore.local
+.git_ignore.local
+
+# ---------------------------------------------------------------------------
+# TEMPORARY EXECUTABLES
+# ---------------------------------------------------------------------------
+
+# Executable files that shouldn't be committed
+run.sh
+run.sh-cowboy
+*.aux
+*.log
+
+# ---------------------------------------------------------------------------
+# END OF .gitignore
+# ---------------------------------------------------------------------------
+
+# This .gitignore is optimized for container-based AI development
+# with clear separation of concerns and security best practices
+
+# End .gitignore
