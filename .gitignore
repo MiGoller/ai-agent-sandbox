@@ -283,7 +283,6 @@ env-flag.txt
 # ---------------------------------------------------------------------------
 
 # Executable files that shouldn't be committed
-run.sh
 run.sh-cowboy
 *.aux
 *.log
