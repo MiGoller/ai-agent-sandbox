@@ -1,13 +1,81 @@
 #!/usr/bin/env bash
 
 # ==============================================================================
-# AI Agent Sandbox - Secure & Flexible Launcher Script
+# AI Agent Sandbox - Secure & Flexible Launcher Script (With Phase 1 Validation)
 # ==============================================================================
 
 set -e
 
+# ------------------------------------------------------------------------------
+# Phase 1: Dependency and Input Validation Functions
+# ------------------------------------------------------------------------------
+
+# Check for required host dependencies
+check_dependencies() {
+    local missing=()
+    
+    # Check for podman (required for container operations)
+    if ! command -v podman &> /dev/null; then
+        missing+=("podman")
+    fi
+    
+    if [ ${#missing[@]} -gt 0 ]; then
+        echo "❌ Error: Missing required dependencies: ${missing[*]}"
+        echo "Please install missing dependencies and try again:"
+        echo "  - Install podman: https://podman.io/getting-started/installation"
+        exit 1
+    fi
+    
+    echo "✅ All dependencies verified"
+}
+
+# Validate and normalize input paths
+validate_and_normalize_inputs() {
+    # Validate and normalize project directory
+    PROJECT_DIR="$(pwd)"
+    if [ ! -d "$PROJECT_DIR" ]; then
+        echo "❌ Error: Project directory '$PROJECT_DIR' does not exist or is not accessible."
+        exit 1
+    fi
+    
+    # Validate flavor directory exists
+    if [ ! -d "flavors/$FLAVOR" ]; then
+        echo "❌ Error: Flavor directory 'flavors/$FLAVOR' does not exist."
+        echo "Available flavors:"
+        find flavors -maxdepth 1 -type d -exec basename {} \;
+        exit 1
+    fi
+}
+
+# Validate CONTAINER_CMD for runtime safety
+validate_container_command() {
+    if [ -n "$CONTAINER_CMD" ] && echo "$CONTAINER_CMD" | grep -qE "^(rm -rf|del|/etc/passwd|chmod.*777|mkfs|dd if=|/bin/sh\s+-c|su\s+root|sudo\s+apt-get.*\s+-y\s+--purge)"; then
+        echo "⚠️  Warning: Potentially dangerous command detected:"
+        echo "  Command: $CONTAINER_CMD"
+        echo "  This could cause significant system damage."
+        echo -n "  Continue? (y/N): "
+        read -r -n 1 RESPONSE
+        echo
+        if [[ ! $RESPONSE =~ ^[Yy]$ ]]; then
+            echo "❌ Command cancelled by user."
+            exit 1
+        fi
+        echo "✅ User confirmed dangerous command execution"
+    fi
+}
+
+# ------------------------------------------------------------------------------
+# Configuration & Argument Parsing
+# ------------------------------------------------------------------------------
+
 BASE_IMAGE="ai-agent-sandbox:base"
 DEFAULT_FLAVOR="python-hermes"
+
+# Default: Centralized global memory in the host user's home directory
+DATA_DIR="$HOME/.config/hermes_sandbox_data"
+
+# Default command inside the container: launch the Hermes interactive TUI
+CONTAINER_CMD="hermes chat --tui"
 
 # Parse arguments
 FLAVOR="$DEFAULT_FLAVOR"
@@ -25,12 +93,35 @@ while [[ $# -gt 0 ]]; do
             FORCE_BUILD=true
             shift
             ;;
+        --local)
+            DATA_DIR="$(pwd)/.hermes_sandbox_data"
+            shift
+            ;;
         *)
-            FLAVOR="$1"
+            # If argument matches a folder in flavors/, switch the flavor.
+            # Otherwise, treat everything else as a custom container command.
+            if [ -d "flavors/$1" ]; then
+                FLAVOR="$1"
+            else
+                CONTAINER_CMD="$*"
+                break
+            fi
             shift
             ;;
     esac
 done
+
+# ------------------------------------------------------------------------------
+# Execute Pre-Flight Validation (Phase 1)
+# ------------------------------------------------------------------------------
+
+echo "🔍 Executing Phase 1: Dependency and Input Validation"
+echo "--------------------------------------------------"
+check_dependencies
+validate_and_normalize_inputs
+validate_container_command
+echo "✅ Phase 1 validation completed successfully"
+echo "=================================================="
 
 IMAGE_NAME="ai-agent-sandbox:$FLAVOR"
 CONTAINER_NAME="ai-agent-jail-$(date +%s)"
@@ -45,11 +136,6 @@ if [ "$FORCE_BUILD" = true ] || ! podman image exists "$BASE_IMAGE" >/dev/null 2
 fi
 
 # 2. Ensure Flavor exists and build it
-if [ ! -d "flavors/$FLAVOR" ]; then
-    echo "❌ Error: Flavor '$FLAVOR' does not exist."
-    exit 1
-fi
-
 if [ "$FORCE_BUILD" = true ] || ! podman image exists "$IMAGE_NAME" >/dev/null 2>&1; then
     echo "📦 Building/Verifying flavor image $IMAGE_NAME..."
     podman build -t "$IMAGE_NAME" -f flavors/$FLAVOR/Containerfile flavors/$FLAVOR
@@ -62,13 +148,13 @@ while IFS='=' read -r name value; do
     fi
 done < <(env)
 
-# 4. NEU: Erstelle den persistenten Datenordner auf dem Host, falls er fehlt
-DATA_DIR="$(pwd)/.hermes_sandbox_data"
+# 4. Ensure the chosen persistent data directory exists on the host
 mkdir -p "$DATA_DIR"
 
 echo "🚀 Launching AI Agent Sandbox..."
 echo "📂 Mounting project directory: $(pwd)"
 echo "🧠 Mounting agent memory:      $DATA_DIR"
+echo "💻 Executing command:          $CONTAINER_CMD"
 if [ "$NETWORK_FLAG" = "--network host" ]; then
     echo "🌐 Network: ENABLED (Host Mode - Local proxies accessible via localhost)"
 else
@@ -76,7 +162,7 @@ else
 fi
 echo "----------------------------------------"
 
-# Jetzt mit zweitem Mount für das Gedächtnis des Agenten
+# Run container with dynamic CONTAINER_CMD at the end
 podman run --rm -it \
   --name "$CONTAINER_NAME" \
   $NETWORK_FLAG \
@@ -84,4 +170,4 @@ podman run --rm -it \
   -v "$(pwd)":/workspace:Z \
   -v "$DATA_DIR":/root/.hermes:Z \
   -w /workspace \
-  "$IMAGE_NAME" /bin/bash
+  "$IMAGE_NAME" $CONTAINER_CMD
