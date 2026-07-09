@@ -18,20 +18,32 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # LAYER 2: Globales UV-Tool (Ändert sich nie)
 RUN pip3 install --no-cache-dir --break-system-packages uv
 
-# LAYER 3: Die dicken Downloads (Klonen & Paket-Installationen)
-# Dieser Layer wird von Podman gecacht, solange sich die Git-URL nicht ändert!
-RUN git clone https://github.com/NousResearch/Hermes-Agent.git /tmp/hermes-repo && \
+# NEUER KOMBINIERTER LAYER 3 & 4: Download, Build und sofortiges Aufräumen
+RUN git clone --depth 1 https://github.com/NousResearch/Hermes-Agent.git /tmp/hermes-repo && \
     uv pip install --system --break-system-packages /tmp/hermes-repo && \
     mkdir -p /usr/local/lib/python3.12/dist-packages/ui-tui && \
     cp -r /tmp/hermes-repo/ui-tui/* /usr/local/lib/python3.12/dist-packages/ui-tui/ && \
     cd /usr/local/lib/python3.12/dist-packages/ui-tui && \
-    npm install --silent --no-fund --no-audit --progress=false
-
-# LAYER 4: Nur Kompilierung & Rechte (Hier fixen wir Fehler, ohne neu zu downloaden!)
-RUN cd /usr/local/lib/python3.12/dist-packages/ui-tui && \
+    npm install --silent --no-fund --no-audit --progress=false && \
     node scripts/build.mjs && \
     chown -R agent:agent /usr/local/lib/python3.12/dist-packages/ui-tui && \
-    rm -rf /tmp/hermes-repo
+    rm -rf /tmp/hermes-repo && \
+    rm -rf ~/.npm ~/.cache/uv
+    
+# # LAYER 3: Die dicken Downloads (Klonen & Paket-Installationen)
+# # Dieser Layer wird von Podman gecacht, solange sich die Git-URL nicht ändert!
+# RUN git clone https://github.com/NousResearch/Hermes-Agent.git /tmp/hermes-repo && \
+#     uv pip install --system --break-system-packages /tmp/hermes-repo && \
+#     mkdir -p /usr/local/lib/python3.12/dist-packages/ui-tui && \
+#     cp -r /tmp/hermes-repo/ui-tui/* /usr/local/lib/python3.12/dist-packages/ui-tui/ && \
+#     cd /usr/local/lib/python3.12/dist-packages/ui-tui && \
+#     npm install --silent --no-fund --no-audit --progress=false
+
+# # LAYER 4: Nur Kompilierung & Rechte (Hier fixen wir Fehler, ohne neu zu downloaden!)
+# RUN cd /usr/local/lib/python3.12/dist-packages/ui-tui && \
+#     node scripts/build.mjs && \
+#     chown -R agent:agent /usr/local/lib/python3.12/dist-packages/ui-tui && \
+#     rm -rf /tmp/hermes-repo
 
 # ==============================================================================
 # FINAL RUNTIME SETTINGS
