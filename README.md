@@ -8,7 +8,7 @@ Modern AI coding agents are incredibly powerful, but they require execution capa
 
 - 🔐 **Exfiltrate private SSH keys** (`~/.ssh`) or credentials.
 - 💥 **Run destructive commands** (`rm -rf /`) due to a hallucination or malicious input.
-- 🌐 **Access sensitive host processes**.
+- 🌐 **Access sensitive host processes.**
 
 A simple `.gitignore` style file only helps with token clutter—**it is not a security boundary.**
 
@@ -20,6 +20,7 @@ A simple `.gitignore` style file only helps with token clutter—**it is not a s
 - 🌐 **Network Lock (Optional/Default):** Prevents data exfiltration by disabling network access unless explicitly enabled via `--online`.
 - 🛡️ **Phase 1 Pre-Flight Validation:** The launcher automatically checks host dependencies, validates input paths, and intercepts potentially dangerous commands before execution.
 - 🧹 **Clean Workspace Policy:** Tool-specific data, chat histories, and configurations are mapped to a centralized host directory, keeping your project folders completely clutter-free.
+- 🚀 **Cloud-First Deployment:** Images are automatically built via CI/CD and published to the **GitHub Container Registry (GHCR)**. The launcher fetches them seamlessly on demand.
 
 ---
 
@@ -33,20 +34,18 @@ Host System                               Container (Guest)
     ├── hermes/       ───────────────►    /root/.hermes/
     ├── aider/        ───────────────►    /root/.aider/
     └── claude-code/  ───────────────►    /root/.claude-code/
-
 ```
 
 ### Repository Layout
 
 ```text
 .
-├── run.sh                 # Universal secure launcher (with Phase 1 validation)
+├── run.sh                 # Universal secure launcher (with GHCR integration & Phase 1 validation)
 └── flavors/
     ├── base/              # Common core layer (Ubuntu 24.04 + core utilities)
     ├── hermes/            # Hermes Agent flavor layer
     ├── aider/             # Aider flavor layer
     └── claude-code/       # Claude Code flavor layer
-
 ```
 
 ---
@@ -70,7 +69,6 @@ To use this sandbox, you need **Podman** installed on your host system. Podman i
 
 ```bash
 sudo apt update && sudo apt install -y podman
-
 ```
 
 ### 🍏 macOS (Homebrew)
@@ -79,7 +77,6 @@ sudo apt update && sudo apt install -y podman
 brew install podman
 podman machine init
 podman machine start
-
 ```
 
 ---
@@ -101,15 +98,30 @@ podman machine start
 
 ---
 
+## 🚚 Container Management & Updates
+
+The launcher script (`run.sh`) connects directly to the GitHub Container Registry. You do not need to build images locally!
+
+### Automatic Image Management
+When executing an agent, the sandbox automatically handles the lifecycle:
+* **First Launch:** If the image isn't available on your host, it will be pulled from GHCR automatically.
+* **Auto-Updates:** On subsequent launches, the script performs a quick, low-overhead check against GHCR to ensure you are always running the latest, most secure image version.
+
+### Registry Authentication
+If your repository or packages are set to private, ensure your local Podman client is authenticated:
+```bash
+echo "YOUR_GITHUB_TOKEN" | podman login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
+```
+
 ## Usage & CLI Flags
 
 The universal launcher script (`run.sh`) acts as a secure wrapper for your container execution.
 
 ### Core Flags
 
-* `./run.sh` ➔ Launches the default flavor (`hermes`) in **Strict Isolation Mode** (No network).
+* `./run.sh` ➔ Launches the default flavor (`hermes`) in **Strict Isolation Mode** (No network) using the production GHCR image.
 * `./run.sh --online` ➔ Enables host network mode (required for external API calls or local LLM proxies like LiteLLM).
-* `./run.sh --build` ➔ Forces Podman to rebuild the container layers for the selected flavor.
+* `./run.sh --build` ➔ Enforces local compilation. It bypasses the GHCR registry and builds the container layers locally from your `flavors/` directories (ideal for tweaking or development).
 * `./run.sh --local` ➔ Switches agent memory from the global fallback (`~/.config/ai-agent-sandbox`) to a project-specific hidden folder (`.ai_agent_sandbox_data`) in your current directory.
 
 ### Custom Commands & Shell Access
@@ -122,7 +134,6 @@ To bypass the default startup command or drop into an interactive debug shell, s
 
 # Execute a one-off command and immediately exit
 ./run.sh --online hermes profile list
-
 ```
 
 ## License
