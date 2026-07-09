@@ -1,11 +1,10 @@
 name: Build & Deploy Container Images
 
 on:
-  # Trigger on changes to Containerfiles or launcher
+  # Trigger on changes to Containerfiles only
   push:
     paths:
       - 'flavors/**'
-      - 'run.sh'
   
   # Trigger on new releases
   release:
@@ -16,7 +15,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_OWNER: MiGoller
+  IMAGE_OWNER: migoller
   # Lowercase naming convention for GHCR packages
   BASE_IMAGE_NAME: ai-agent-sandbox-base
   HERMES_IMAGE_NAME: ai-agent-sandbox-hermes
@@ -73,7 +72,7 @@ jobs:
           podman build -t ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ env.CLAUDE_IMAGE_NAME }}:latest -t ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ env.CLAUDE_IMAGE_NAME }}:${{ github.sha }} -f flavors/claude-code/Containerfile flavors/claude-code
           podman push ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ env.CLAUDE_IMAGE_NAME }}:latest
           podman push ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ env.CLAUDE_IMAGE_NAME }}:${{ github.sha }}
-    
+  
       # 5. Generate Dynamic Release Summary
       - name: Create release notes
         run: |
@@ -86,13 +85,13 @@ jobs:
           echo "- **Hermes:** \`${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ env.HERMES_IMAGE_NAME }}:latest\`" >> release_notes.md
           echo "- **Aider:** \`${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ env.AIDER_IMAGE_NAME }}:latest\`" >> release_notes.md
           echo "- **Claude Code:** \`${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ env.CLAUDE_IMAGE_NAME }}:latest\`" >> release_notes.md
-    
+  
       - name: Upload release notes
         uses: actions/upload-artifact@v4
         with:
           name: release-notes
           path: release_notes.md
-    
+  
       - name: Cleanup
         run: |
           podman logout ${{ env.REGISTRY }}
