@@ -48,7 +48,11 @@ jobs:
       # 1. Build & Push Base Image
       - name: Build and push base image
         run: |
-          podman build -t ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ env.BASE_IMAGE_NAME }}:latest -t ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ env.BASE_IMAGE_NAME }}:${{ github.sha }} -f flavors/base/Containerfile flavors/base
+          podman build \
+            -t ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ env.BASE_IMAGE_NAME }}:latest \
+            -t ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ env.BASE_IMAGE_NAME }}:${{ github.sha }} \
+            -t ai-agent-sandbox:base \
+            -f flavors/base/Containerfile flavors/base
           podman push ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ env.BASE_IMAGE_NAME }}:latest
           podman push ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ env.BASE_IMAGE_NAME }}:${{ github.sha }}
     
