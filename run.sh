@@ -148,22 +148,52 @@ validate_container_command
 echo "✅ Phase 1 validation completed successfully"
 echo "=================================================="
 
-IMAGE_NAME="ai-agent-sandbox:$FLAVOR"
+# ------------------------------------------------------------------------------
+# Container Image Resolution (GHCR Default vs. Local Build)
+# ------------------------------------------------------------------------------
+
+REGISTRY="ghcr.io"
+IMAGE_OWNER="migoller"
+
+# Map flavor name to its specific GHCR repository name
+case $FLAVOR in
+    base)        IMAGE_REPO="ai-agent-sandbox-base" ;;
+    hermes)      IMAGE_REPO="ai-agent-sandbox-hermes" ;;
+    aider)       IMAGE_REPO="ai-agent-sandbox-aider" ;;
+    claude-code) IMAGE_REPO="ai-agent-sandbox-claude-code" ;;
+    *)           IMAGE_REPO="ai-agent-sandbox-$FLAVOR" ;;
+esac
+
 CONTAINER_NAME="ai-agent-jail-$(date +%s)"
 
 echo "🛡️  AI Agent Sandbox Launcher"
 echo "----------------------------------------"
 
-# 1. Ensure Base Image exists (or force rebuild)
-if [ "$FORCE_BUILD" = true ] || ! podman image exists "$BASE_IMAGE" >/dev/null 2>&1; then
-    echo "📦 Building/Verifying base image $BASE_IMAGE..."
-    podman build -t "$BASE_IMAGE" -f flavors/base/Containerfile flavors/base
-fi
-
-# 2. Ensure Flavor exists and build it
-if [ "$FORCE_BUILD" = true ] || ! podman image exists "$IMAGE_NAME" >/dev/null 2>&1; then
-    echo "📦 Building/Verifying flavor image $IMAGE_NAME..."
+if [ "$FORCE_BUILD" = true ]; then
+    echo "🛠️  Force-building flavor '$FLAVOR' locally..."
+    
+    # Ensure local base image exists for the build process
+    if ! podman image exists "$BASE_IMAGE" >/dev/null 2>&1; then
+        echo "📦 Base image missing. Building $BASE_IMAGE locally..."
+        podman build -t "$BASE_IMAGE" -f flavors/base/Containerfile flavors/base
+    fi
+    
+    # Build the flavor locally
+    IMAGE_NAME="ai-agent-sandbox:$FLAVOR"
     podman build -t "$IMAGE_NAME" -f flavors/$FLAVOR/Containerfile flavors/$FLAVOR
+else
+    # Default: Use pre-built production images from GHCR
+    IMAGE_NAME="${REGISTRY}/${IMAGE_OWNER}/${IMAGE_REPO}:latest"
+    
+    if ! podman image exists "$IMAGE_NAME" >/dev/null 2>&1; then
+        echo "🚚 Pre-built image not found locally. Pulling from GHCR..."
+        podman pull "$IMAGE_NAME" || exit 1
+    else
+        # Das Image existiert lokal, aber wir machen einen schnellen, leisen Check auf Updates
+        echo "🔄 Checking GHCR for updates to ${FLAVOR}..."
+        # podman pull holt nur etwas herunter, wenn sich der Hash auf GHCR geändert hat
+        podman pull -q "$IMAGE_NAME" || echo "⚠️  Could not check for updates, running cached local version."
+    fi
 fi
 
 # 3. Automatically detect and pass relevant API Keys & Base URLs from Host
