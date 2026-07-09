@@ -83,6 +83,9 @@ NETWORK_FLAG="--network none"
 ENV_FLAGS=""
 FORCE_BUILD=false
 
+# Parse arguments
+FLAVOR_SET=false  # <--- Diese Zeile neu hinzufügen
+
 while [[ $# -gt 0 ]]; do
     case $1 in
         --online)
@@ -98,9 +101,11 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         *)
-            if [ -d "flavors/$1" ]; then
+            # Only interpret as flavor if we haven't locked in a flavor yet
+            if [ "$FLAVOR_SET" = false ] && [ -d "flavors/$1" ]; then
                 FLAVOR="$1"
-                CONTAINER_CMD="" 
+                CONTAINER_CMD=""
+                FLAVOR_SET=true  # <--- Jetzt ist der Flavor gelockt!
             else
                 CONTAINER_CMD="$*"
                 break

@@ -86,27 +86,18 @@ podman machine start
 
 ## Quick Start
 
-1. **Make the launcher script executable**:
-```bash
-chmod +x run.sh
-
-```
-
-
-2. **Launch the default agent (Hermes) in strict isolation mode**:
-```bash
-./run.sh
-
-```
-
-
-3. **Launch an online agent (e.g., Claude Code)**:
-```bash
-./run.sh claude-code --online
-
-```
-
-
+1. **Clone the repository and run the global installer**:
+    ```bash
+    git clone [https://github.com/MiGoller/ai-agent-sandbox.git](https://github.com/MiGoller/ai-agent-sandbox.git)
+    cd ai-agent-sandbox
+    ./setup.sh
+    ```
+2. **Launch any agent instantly from ANY directory on your host**:
+    ```bash
+    hermes
+    aider
+    claude
+    ```
 
 ---
 
