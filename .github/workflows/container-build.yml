@@ -1,0 +1,99 @@
+name: Build & Deploy Container Images
+
+on:
+  # Trigger on changes to Containerfiles or launcher
+  push:
+    paths:
+      - 'flavors/**'
+      - 'run.sh'
+  
+  # Trigger on new releases
+  release:
+    types: [published]
+  
+  # Allow manual triggering
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_OWNER: MiGoller
+  # Lowercase naming convention for GHCR packages
+  BASE_IMAGE_NAME: ai-agent-sandbox-base
+  HERMES_IMAGE_NAME: ai-agent-sandbox-hermes
+  AIDER_IMAGE_NAME: ai-agent-sandbox-aider
+  CLAUDE_IMAGE_NAME: ai-agent-sandbox-claude-code
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+    
+      - name: Set up Podman
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y podman
+          podman version
+    
+      - name: Login to GitHub Container Registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | podman login ghcr.io -u ${{ github.actor }} --password-stdin
+    
+      # 1. Build & Push Base Image
+      - name: Build and push base image
+        run: |
+          podman build -t ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ env.BASE_IMAGE_NAME }}:latest -t ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ env.BASE_IMAGE_NAME }}:${{ github.sha }} -f flavors/base/Containerfile flavors/base
+          podman push ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ env.BASE_IMAGE_NAME }}:latest
+          podman push ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ env.BASE_IMAGE_NAME }}:${{ github.sha }}
+    
+      # 2. Build & Push Hermes Image
+      - name: Build and push hermes image
+        run: |
+          podman build -t ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ env.HERMES_IMAGE_NAME }}:latest -t ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ env.HERMES_IMAGE_NAME }}:${{ github.sha }} -f flavors/hermes/Containerfile flavors/hermes
+          podman push ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ env.HERMES_IMAGE_NAME }}:latest
+          podman push ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ env.HERMES_IMAGE_NAME }}:${{ github.sha }}
+
+      # 3. Build & Push Aider Image
+      - name: Build and push aider image
+        run: |
+          podman build -t ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ env.AIDER_IMAGE_NAME }}:latest -t ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ env.AIDER_IMAGE_NAME }}:${{ github.sha }} -f flavors/aider/Containerfile flavors/aider
+          podman push ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ env.AIDER_IMAGE_NAME }}:latest
+          podman push ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ env.AIDER_IMAGE_NAME }}:${{ github.sha }}
+
+      # 4. Build & Push Claude Code Image
+      - name: Build and push claude-code image
+        run: |
+          podman build -t ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ env.CLAUDE_IMAGE_NAME }}:latest -t ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ env.CLAUDE_IMAGE_NAME }}:${{ github.sha }} -f flavors/claude-code/Containerfile flavors/claude-code
+          podman push ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ env.CLAUDE_IMAGE_NAME }}:latest
+          podman push ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ env.CLAUDE_IMAGE_NAME }}:${{ github.sha }}
+    
+      # 5. Generate Dynamic Release Summary
+      - name: Create release notes
+        run: |
+          echo "## Container Image Build Summary" > release_notes.md
+          echo "**Built:** $(date)" >> release_notes.md
+          echo "**Commit:** ${{ github.sha }}" >> release_notes.md
+          echo "" >> release_notes.md
+          echo "### Available Packages:" >> release_notes.md
+          echo "- **Base:** \`${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ env.BASE_IMAGE_NAME }}:latest\`" >> release_notes.md
+          echo "- **Hermes:** \`${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ env.HERMES_IMAGE_NAME }}:latest\`" >> release_notes.md
+          echo "- **Aider:** \`${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ env.AIDER_IMAGE_NAME }}:latest\`" >> release_notes.md
+          echo "- **Claude Code:** \`${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ env.CLAUDE_IMAGE_NAME }}:latest\`" >> release_notes.md
+    
+      - name: Upload release notes
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: release_notes.md
+    
+      - name: Cleanup
+        run: |
+          podman logout ${{ env.REGISTRY }}
+          rm -f release_notes.md
