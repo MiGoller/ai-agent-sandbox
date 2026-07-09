@@ -69,13 +69,13 @@ validate_container_command() {
 # ------------------------------------------------------------------------------
 
 BASE_IMAGE="ai-agent-sandbox:base"
-DEFAULT_FLAVOR="python-hermes"
+DEFAULT_FLAVOR="hermes"
 
-# Default: Centralized global memory in the host user's home directory
-DATA_DIR="$HOME/.config/hermes_sandbox_data"
+# Centralized global base directory for all sandbox data on the host
+DATA_DIR="$HOME/.config/ai-agent-sandbox"
 
-# Default command inside the container: launch the Hermes interactive TUI
-CONTAINER_CMD="hermes chat --tui"
+# Default command will be dynamically set below depending on the chosen flavor
+CONTAINER_CMD=""
 
 # Parse arguments
 FLAVOR="$DEFAULT_FLAVOR"
@@ -94,14 +94,13 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --local)
-            DATA_DIR="$(pwd)/.hermes_sandbox_data"
+            DATA_DIR="$(pwd)/.ai_agent_sandbox_data"
             shift
             ;;
         *)
-            # If argument matches a folder in flavors/, switch the flavor.
-            # Otherwise, treat everything else as a custom container command.
             if [ -d "flavors/$1" ]; then
                 FLAVOR="$1"
+                CONTAINER_CMD="" 
             else
                 CONTAINER_CMD="$*"
                 break
@@ -110,6 +109,27 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# --- SET DYNAMIC DEFAULT COMMAND ---
+if [ -z "$CONTAINER_CMD" ]; then
+    case $FLAVOR in
+        hermes)
+            CONTAINER_CMD="hermes chat --tui"
+            ;;
+        aider)
+            CONTAINER_CMD="aider"
+            ;;
+        claude-code)
+            CONTAINER_CMD="claude"
+            ;;
+        base)
+            CONTAINER_CMD="bash"
+            ;;
+        *)
+            CONTAINER_CMD="bash"
+            ;;
+    esac
+fi
 
 # ------------------------------------------------------------------------------
 # Execute Pre-Flight Validation (Phase 1)
@@ -148,12 +168,12 @@ while IFS='=' read -r name value; do
     fi
 done < <(env)
 
-# 4. Ensure the chosen persistent data directory exists on the host
-mkdir -p "$DATA_DIR"
+# 4. Ensure the flavor-specific persistent data directory exists on the host
+mkdir -p "$DATA_DIR/$FLAVOR"
 
 echo "🚀 Launching AI Agent Sandbox..."
 echo "📂 Mounting project directory: $(pwd)"
-echo "🧠 Mounting agent memory:      $DATA_DIR"
+echo "🧠 Mounting agent memory:      $DATA_DIR/$FLAVOR"
 echo "💻 Executing command:          $CONTAINER_CMD"
 if [ "$NETWORK_FLAG" = "--network host" ]; then
     echo "🌐 Network: ENABLED (Host Mode - Local proxies accessible via localhost)"
@@ -162,12 +182,26 @@ else
 fi
 echo "----------------------------------------"
 
+# --- DYNAMIC MAPPING TO NATIVE STANDARD DIRECTORIES ---
+if [ "$FLAVOR" = "hermes" ]; then
+    VOLUME_FLAG="-v $DATA_DIR/$FLAVOR:/root/.hermes:Z"
+elif [ "$FLAVOR" = "aider" ]; then
+    VOLUME_FLAG="-v $DATA_DIR/$FLAVOR:/root/.aider:Z"
+    
+    # Force Aider to store its history in its native standard directory inside the container
+    ENV_FLAGS="$ENV_FLAGS -e AIDER_CHAT_HISTORY_FILE=/root/.aider/.aider.chat.history.md"
+    ENV_FLAGS="$ENV_FLAGS -e AIDER_INPUT_HISTORY_FILE=/root/.aider/.aider.input.history"
+    ENV_FLAGS="$ENV_FLAGS -e AIDER_CACHE_DIR=/root/.aider/.aider.tags.cache.v4"
+else
+    VOLUME_FLAG="-v $DATA_DIR/$FLAVOR:/root/.$FLAVOR:Z"
+fi
+
 # Run container with dynamic CONTAINER_CMD at the end
 podman run --rm -it \
   --name "$CONTAINER_NAME" \
   $NETWORK_FLAG \
   $ENV_FLAGS \
   -v "$(pwd)":/workspace:Z \
-  -v "$DATA_DIR":/root/.hermes:Z \
+  $VOLUME_FLAG \
   -w /workspace \
   "$IMAGE_NAME" $CONTAINER_CMD

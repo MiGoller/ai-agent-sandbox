@@ -1,0 +1,22 @@
+# ==============================================================================
+# FLAVOR: Claude Code CLI (Optimized Rootless)
+# ==============================================================================
+FROM ai-agent-sandbox:base
+
+USER root
+
+# LAYER 1: Node.js 22 & npm installieren (Für Claude Code erforderlich)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# LAYER 2: Claude Code global installieren & sofort aufräumen
+RUN npm install -g @anthropic-ai/claude-code --silent --no-fund --no-audit && \
+    rm -rf ~/.npm
+
+# Zurück zum sicheren, unprivilegierten User
+USER root
+WORKDIR /workspace
+CMD ["claude"]

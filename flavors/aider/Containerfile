@@ -1,0 +1,24 @@
+# ==============================================================================
+# FLAVOR: Aider AI Pair Programmer
+# ==============================================================================
+FROM ai-agent-sandbox:base
+
+USER root
+
+# LAYER 1: Python & Git (Git ist Pflicht für Aider, da es Commits schreibt!)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# LAYER 2: UV für schnellen Install nutzen
+RUN pip3 install --no-cache-dir --break-system-packages uv
+
+# LAYER 3: Aider installieren und Cache im selben Atemzug vernichten
+RUN uv pip install --system --break-system-packages aider-chat && \
+    rm -rf ~/.cache/uv
+
+USER root
+WORKDIR /workspace
+CMD ["aider"]
