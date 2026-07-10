@@ -22,7 +22,7 @@ jobs:
 
       # Scan the repository filesystem before any build happens (Shift-Left Security)
       - name: Run Trivy vulnerability scanner (FS Mode)
-        uses: aquasquad/trivy-action@v1
+        uses: aquasecurity/trivy-action@v0.28.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
