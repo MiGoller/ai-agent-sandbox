@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -e
 
+# RETTE DAS URSPRÜNGLICHE VERZEICHNIS DES USERS!
+export ORIGINAL_PWD="$(pwd)"
+
 # Resolve the absolute path of this script, even if called via a symlink
 REAL_SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
 SCRIPT_DIR="$(cd "$(dirname "$REAL_SCRIPT_PATH")" && pwd)"
@@ -13,8 +16,6 @@ cd "$SANDBOX_DIR"
 
 case "$TRIGGER_NAME" in
     hermes)
-        # If no arguments are given, start the default interactive TUI.
-        # If arguments are given, preserve 'hermes' as the executable name.
         if [ $# -eq 0 ]; then
             exec ./run.sh hermes --online
         else
@@ -36,10 +37,6 @@ case "$TRIGGER_NAME" in
             echo "🛡️  AI Agent Sandbox Global Wrapper"
             echo "----------------------------------------"
             echo "Usage: ai-sandbox [flavor] [args]"
-            echo "Or use the global symlinks directly from anywhere:"
-            echo "  - hermes [args]"
-            echo "  - aider [args]"
-            echo "  - claude [args]"
             exit 1
         fi
         exec ./run.sh "$@"

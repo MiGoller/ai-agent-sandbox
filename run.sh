@@ -6,6 +6,9 @@
 
 set -e
 
+# Get the absolute directory where run.sh itself is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # ------------------------------------------------------------------------------
 # Phase 1: Dependency and Input Validation Functions
 # ------------------------------------------------------------------------------
@@ -31,18 +34,19 @@ check_dependencies() {
 
 # Validate and normalize input paths
 validate_and_normalize_inputs() {
-    # Validate and normalize project directory
-    PROJECT_DIR="$(pwd)"
+    # Nutze das gerettete Verzeichnis, falls vorhanden, sonst das aktuelle
+    PROJECT_DIR="${ORIGINAL_PWD:-$(pwd)}"
+    
     if [ ! -d "$PROJECT_DIR" ]; then
         echo "❌ Error: Project directory '$PROJECT_DIR' does not exist or is not accessible."
         exit 1
     fi
     
-    # Validate flavor directory exists
-    if [ ! -d "flavors/$FLAVOR" ]; then
-        echo "❌ Error: Flavor directory 'flavors/$FLAVOR' does not exist."
+    # Validate flavor directory exists relative to the script location
+    if [ ! -d "$SCRIPT_DIR/flavors/$FLAVOR" ]; then
+        echo "❌ Error: Flavor directory '$SCRIPT_DIR/flavors/$FLAVOR' does not exist."
         echo "Available flavors:"
-        find flavors -maxdepth 1 -type d -exec basename {} \;
+        find "$SCRIPT_DIR/flavors" -maxdepth 1 -type d -exec basename {} \;
         exit 1
     fi
 }
@@ -82,9 +86,7 @@ FLAVOR="$DEFAULT_FLAVOR"
 NETWORK_FLAG="--network none"
 ENV_FLAGS=""
 FORCE_BUILD=false
-
-# Parse arguments
-FLAVOR_SET=false  # <--- Diese Zeile neu hinzufügen
+FLAVOR_SET=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -102,10 +104,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         *)
             # Only interpret as flavor if we haven't locked in a flavor yet
-            if [ "$FLAVOR_SET" = false ] && [ -d "flavors/$1" ]; then
+            if [ "$FLAVOR_SET" = false ] && [ -d "$SCRIPT_DIR/flavors/$1" ]; then
                 FLAVOR="$1"
                 CONTAINER_CMD=""
-                FLAVOR_SET=true  # <--- Jetzt ist der Flavor gelockt!
+                FLAVOR_SET=true
             else
                 CONTAINER_CMD="$*"
                 break
@@ -175,12 +177,12 @@ if [ "$FORCE_BUILD" = true ]; then
     # Ensure local base image exists for the build process
     if ! podman image exists "$BASE_IMAGE" >/dev/null 2>&1; then
         echo "📦 Base image missing. Building $BASE_IMAGE locally..."
-        podman build -t "$BASE_IMAGE" -f flavors/base/Containerfile flavors/base
+        podman build -t "$BASE_IMAGE" -f "$SCRIPT_DIR/flavors/base/Containerfile" "$SCRIPT_DIR/flavors/base"
     fi
     
     # Build the flavor locally
     IMAGE_NAME="ai-agent-sandbox:$FLAVOR"
-    podman build -t "$IMAGE_NAME" -f flavors/$FLAVOR/Containerfile flavors/$FLAVOR
+    podman build -t "$IMAGE_NAME" -f "$SCRIPT_DIR/flavors/$FLAVOR/Containerfile" "$SCRIPT_DIR/flavors/$FLAVOR"
 else
     # Default: Use pre-built production images from GHCR
     IMAGE_NAME="${REGISTRY}/${IMAGE_OWNER}/${IMAGE_REPO}:latest"
@@ -196,18 +198,18 @@ else
     fi
 fi
 
-# 3. Automatically detect and pass relevant API Keys & Base URLs from Host
+# Automatically detect and pass relevant API Keys & Base URLs from Host
 while IFS='=' read -r name value; do
     if [[ $name =~ ^(OPENAI_|ANTHROPIC_|LITELLM_) ]]; then
         ENV_FLAGS="$ENV_FLAGS -e $name"
     fi
 done < <(env)
 
-# 4. Ensure the flavor-specific persistent data directory exists on the host
+# Ensure the flavor-specific persistent data directory exists on the host
 mkdir -p "$DATA_DIR/$FLAVOR"
 
 echo "🚀 Launching AI Agent Sandbox..."
-echo "📂 Mounting project directory: $(pwd)"
+echo "📂 Mounting project directory: ${ORIGINAL_PWD:-$(pwd)}"
 echo "🧠 Mounting agent memory:      $DATA_DIR/$FLAVOR"
 echo "💻 Executing command:          $CONTAINER_CMD"
 if [ "$NETWORK_FLAG" = "--network host" ]; then
@@ -236,7 +238,7 @@ podman run --rm -it \
   --name "$CONTAINER_NAME" \
   $NETWORK_FLAG \
   $ENV_FLAGS \
-  -v "$(pwd)":/workspace:Z \
+  -v "${ORIGINAL_PWD:-$(pwd)}":/workspace:Z \
   $VOLUME_FLAG \
   -w /workspace \
   "$IMAGE_NAME" $CONTAINER_CMD
