@@ -1,32 +1,23 @@
 name: Build & Deploy Container Images
 
 on:
-  # Trigger on changes to Containerfiles only
   push:
     paths:
       - 'flavors/**'
-  
-  # Trigger on new releases
   release:
     types: [published]
-  
-  # Allow manual triggering
   workflow_dispatch:
-
-  # Allow triggering via external webhooks (e.g., to rebuild images regularly)
   repository_dispatch:
     types: [ trigger-container-build ]
 
 permissions:
   contents: read
   packages: write
-  # REQUIRED: Allow uploading security results to the Security tab
   security-events: write
 
 env:
   REGISTRY: ghcr.io
   IMAGE_OWNER: migoller
-  # Lowercase naming convention for GHCR packages
   BASE_IMAGE_NAME: ai-agent-sandbox-base
   HERMES_IMAGE_NAME: ai-agent-sandbox-hermes
   AIDER_IMAGE_NAME: ai-agent-sandbox-aider
@@ -39,15 +30,31 @@ jobs:
       contents: read
       packages: write
       id-token: write
-      security-events: write # Required within the job context as well
+      security-events: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-    
-      # Log in to the GitHub Container Registry securely for both Host and Buildx
+
+      # --- DETECT CHANGES ---
+      # This step checks exactly which directories were modified in this commit
+      - name: Check changed files
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            base:
+              - 'flavors/base/**'
+            hermes:
+              - 'flavors/hermes/**'
+            aider:
+              - 'flavors/aider/**'
+            claude-code:
+              - 'flavors/claude-code/**'
+
+      # Log in to the GitHub Container Registry securely
       - name: Log in to the GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -61,12 +68,19 @@ jobs:
         with:
           platforms: all
 
-      # Set up Docker Buildx to leverage advanced multi-architecture container builds
+      # Set up Docker Buildx
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Step 1: Build & Push Multi-Architecture Base Image
+      # ==============================================================================
+      # STEP 1: BASE IMAGE (Only runs if base changed OR manual/webhook trigger)
+      # ==============================================================================
       - name: Build and push base image
+        if: |
+          github.event_name == 'workflow_dispatch' ||
+          github.event_name == 'repository_dispatch' ||
+          github.event_name == 'release' ||
+          steps: filter.outputs.base == 'true'
         uses: docker/build-push-action@v6
         with:
           context: flavors/base
@@ -77,8 +91,16 @@ jobs:
             ghcr.io/migoller/ai-agent-sandbox-base:latest
             ghcr.io/migoller/ai-agent-sandbox-base:${{ github.sha }}
 
-      # Step 2: Build & Push Multi-Architecture Hermes Flavor Image
+      # ==============================================================================
+      # STEP 2: HERMES FLAVOR (Runs if hermes changed OR base changed OR manual/webhook)
+      # ==============================================================================
       - name: Build and push Hermes flavor
+        if: |
+          github.event_name == 'workflow_dispatch' ||
+          github.event_name == 'repository_dispatch' ||
+          github.event_name == 'release' ||
+          steps: filter.outputs.base == 'true' ||
+          steps: filter.outputs.hermes == 'true'
         uses: docker/build-push-action@v6
         with:
           context: flavors/hermes
@@ -91,8 +113,13 @@ jobs:
             ghcr.io/migoller/ai-agent-sandbox-hermes:latest
             ghcr.io/migoller/ai-agent-sandbox-hermes:${{ github.sha }}
 
-      # Step 2.5: Trivy Image Scan for Hermes
       - name: Run Trivy scanner on Hermes image
+        if: |
+          github.event_name == 'workflow_dispatch' ||
+          github.event_name == 'repository_dispatch' ||
+          github.event_name == 'release' ||
+          steps: filter.outputs.base == 'true' ||
+          steps: filter.outputs.hermes == 'true'
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'image'
@@ -104,14 +131,29 @@ jobs:
           severity: 'CRITICAL,HIGH'
 
       - name: Upload Hermes scan results to GitHub Security tab
+        if: |
+          always() && (
+            github.event_name == 'workflow_dispatch' ||
+            github.event_name == 'repository_dispatch' ||
+            github.event_name == 'release' ||
+            steps: filter.outputs.base == 'true' ||
+            steps: filter.outputs.hermes == 'true'
+          )
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
         with:
           sarif_file: 'trivy-hermes-results.sarif'
           category: 'image-hermes'
 
-      # Step 3: Build & Push Multi-Architecture Aider Flavor Image
+      # ==============================================================================
+      # STEP 3: AIDER FLAVOR (Runs if aider changed OR base changed OR manual/webhook)
+      # ==============================================================================
       - name: Build and push Aider flavor
+        if: |
+          github.event_name == 'workflow_dispatch' ||
+          github.event_name == 'repository_dispatch' ||
+          github.event_name == 'release' ||
+          steps: filter.outputs.base == 'true' ||
+          steps: filter.outputs.aider == 'true'
         uses: docker/build-push-action@v6
         with:
           context: flavors/aider
@@ -124,8 +166,13 @@ jobs:
             ghcr.io/migoller/ai-agent-sandbox-aider:latest
             ghcr.io/migoller/ai-agent-sandbox-aider:${{ github.sha }}
 
-      # Step 3.5: Trivy Image Scan for Aider
       - name: Run Trivy scanner on Aider image
+        if: |
+          github.event_name == 'workflow_dispatch' ||
+          github.event_name == 'repository_dispatch' ||
+          github.event_name == 'release' ||
+          steps: filter.outputs.base == 'true' ||
+          steps: filter.outputs.aider == 'true'
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'image'
@@ -137,14 +184,29 @@ jobs:
           severity: 'CRITICAL,HIGH'
 
       - name: Upload Aider scan results to GitHub Security tab
+        if: |
+          always() && (
+            github.event_name == 'workflow_dispatch' ||
+            github.event_name == 'repository_dispatch' ||
+            github.event_name == 'release' ||
+            steps: filter.outputs.base == 'true' ||
+            steps: filter.outputs.aider == 'true'
+          )
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
         with:
           sarif_file: 'trivy-aider-results.sarif'
           category: 'image-aider'
 
-      # Step 4: Build & Push Multi-Architecture Claude-Code Flavor Image
+      # ==============================================================================
+      # STEP 4: CLAUDE-CODE FLAVOR (Runs if claude changed OR base changed OR manual)
+      # ==============================================================================
       - name: Build and push Claude-Code flavor
+        if: |
+          github.event_name == 'workflow_dispatch' ||
+          github.event_name == 'repository_dispatch' ||
+          github.event_name == 'release' ||
+          steps: filter.outputs.base == 'true' ||
+          steps: filter.outputs.claude-code == 'true'
         uses: docker/build-push-action@v6
         with:
           context: flavors/claude-code
@@ -157,8 +219,13 @@ jobs:
             ghcr.io/migoller/ai-agent-sandbox-claude-code:latest
             ghcr.io/migoller/ai-agent-sandbox-claude-code:${{ github.sha }}
 
-      # Step 4.5: Trivy Image Scan for Claude-Code
       - name: Run Trivy scanner on Claude-Code image
+        if: |
+          github.event_name == 'workflow_dispatch' ||
+          github.event_name == 'repository_dispatch' ||
+          github.event_name == 'release' ||
+          steps: filter.outputs.base == 'true' ||
+          steps: filter.outputs.claude-code == 'true'
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'image'
@@ -170,8 +237,15 @@ jobs:
           severity: 'CRITICAL,HIGH'
 
       - name: Upload Claude-Code scan results to GitHub Security tab
+        if: |
+          always() && (
+            github.event_name == 'workflow_dispatch' ||
+            github.event_name == 'repository_dispatch' ||
+            github.event_name == 'release' ||
+            steps: filter.outputs.base == 'true' ||
+            steps: filter.outputs.claude-code == 'true'
+          )
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
         with:
           sarif_file: 'trivy-claude-results.sarif'
           category: 'image-claude-code'

@@ -14,7 +14,7 @@ env:
   IMAGE_OWNER: migoller
 
 jobs:
-  # Job 1: Our existing repository file scan
+  # Job 1: Triggers on EVERYTHING (Push, PR, Webhook, Manual) to scan repository files
   static-analysis:
     name: Repository Static Scan
     runs-on: ubuntu-latest
@@ -43,10 +43,13 @@ jobs:
         with:
           sarif_file: 'trivy-results.sarif'
 
-  # Job 2: New periodic scan for published GHCR images
+  # Job 2: ONLY triggers via Webhook (repository_dispatch) or Manual (workflow_dispatch)
   registry-image-scan:
     name: GHCR Registry Image Scan
     runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'repository_dispatch' ||
+      github.event_name == 'workflow_dispatch'
     permissions:
       security-events: write
       packages: read
@@ -55,7 +58,6 @@ jobs:
       matrix:
         flavor: [hermes, aider, claude-code]
     steps:
-      # We don't even need to checkout the code here, we just pull and check the image directly!
       - name: Run Trivy scanner on GHCR ${{ matrix.flavor }} image
         uses: aquasecurity/trivy-action@v0.36.0
         with:
