@@ -18,7 +18,7 @@ RUN pip3 install --no-cache-dir --break-system-packages uv
 # LAYER 3: Combined installation layer - install aider, upgrade nested vulnerabilities, and cleanup
 RUN uv pip install --system --break-system-packages aider-chat && \
     # --- SECURITY UPGRADE: Overwrite vulnerable nested dependencies discovered by Trivy ---
-    uv pip install --system --break-system-packages -U litellm aiohttp cryptography pillow starlette && \
+    uv pip install --system --break-system-packages -U aiohttp cryptography pillow starlette && \
     # -------------------------------------------------------------------------------------
     rm -rf ~/.cache/uv
 
