@@ -39,7 +39,6 @@ jobs:
           fetch-depth: 0
 
       # --- DETECT CHANGES ---
-      # This step checks exactly which directories were modified in this commit
       - name: Check changed files
         id: filter
         uses: dorny/paths-filter@v3
@@ -73,14 +72,14 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       # ==============================================================================
-      # STEP 1: BASE IMAGE (Only runs if base changed OR manual/webhook trigger)
+      # STEP 1: BASE IMAGE
       # ==============================================================================
       - name: Build and push base image
         if: |
           github.event_name == 'workflow_dispatch' ||
           github.event_name == 'repository_dispatch' ||
           github.event_name == 'release' ||
-          steps: filter.outputs.base == 'true'
+          steps.filter.outputs.base == 'true'
         uses: docker/build-push-action@v6
         with:
           context: flavors/base
@@ -92,15 +91,15 @@ jobs:
             ghcr.io/migoller/ai-agent-sandbox-base:${{ github.sha }}
 
       # ==============================================================================
-      # STEP 2: HERMES FLAVOR (Runs if hermes changed OR base changed OR manual/webhook)
+      # STEP 2: HERMES FLAVOR
       # ==============================================================================
       - name: Build and push Hermes flavor
         if: |
           github.event_name == 'workflow_dispatch' ||
           github.event_name == 'repository_dispatch' ||
           github.event_name == 'release' ||
-          steps: filter.outputs.base == 'true' ||
-          steps: filter.outputs.hermes == 'true'
+          steps.filter.outputs.base == 'true' ||
+          steps.filter.outputs.hermes == 'true'
         uses: docker/build-push-action@v6
         with:
           context: flavors/hermes
@@ -118,8 +117,8 @@ jobs:
           github.event_name == 'workflow_dispatch' ||
           github.event_name == 'repository_dispatch' ||
           github.event_name == 'release' ||
-          steps: filter.outputs.base == 'true' ||
-          steps: filter.outputs.hermes == 'true'
+          steps.filter.outputs.base == 'true' ||
+          steps.filter.outputs.hermes == 'true'
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'image'
@@ -136,8 +135,8 @@ jobs:
             github.event_name == 'workflow_dispatch' ||
             github.event_name == 'repository_dispatch' ||
             github.event_name == 'release' ||
-            steps: filter.outputs.base == 'true' ||
-            steps: filter.outputs.hermes == 'true'
+            steps.filter.outputs.base == 'true' ||
+            steps.filter.outputs.hermes == 'true'
           )
         uses: github/codeql-action/upload-sarif@v3
         with:
@@ -145,15 +144,15 @@ jobs:
           category: 'image-hermes'
 
       # ==============================================================================
-      # STEP 3: AIDER FLAVOR (Runs if aider changed OR base changed OR manual/webhook)
+      # STEP 3: AIDER FLAVOR
       # ==============================================================================
       - name: Build and push Aider flavor
         if: |
           github.event_name == 'workflow_dispatch' ||
           github.event_name == 'repository_dispatch' ||
           github.event_name == 'release' ||
-          steps: filter.outputs.base == 'true' ||
-          steps: filter.outputs.aider == 'true'
+          steps.filter.outputs.base == 'true' ||
+          steps.filter.outputs.aider == 'true'
         uses: docker/build-push-action@v6
         with:
           context: flavors/aider
@@ -171,8 +170,8 @@ jobs:
           github.event_name == 'workflow_dispatch' ||
           github.event_name == 'repository_dispatch' ||
           github.event_name == 'release' ||
-          steps: filter.outputs.base == 'true' ||
-          steps: filter.outputs.aider == 'true'
+          steps.filter.outputs.base == 'true' ||
+          steps.filter.outputs.aider == 'true'
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'image'
@@ -189,8 +188,8 @@ jobs:
             github.event_name == 'workflow_dispatch' ||
             github.event_name == 'repository_dispatch' ||
             github.event_name == 'release' ||
-            steps: filter.outputs.base == 'true' ||
-            steps: filter.outputs.aider == 'true'
+            steps.filter.outputs.base == 'true' ||
+            steps.filter.outputs.aider == 'true'
           )
         uses: github/codeql-action/upload-sarif@v3
         with:
@@ -198,15 +197,15 @@ jobs:
           category: 'image-aider'
 
       # ==============================================================================
-      # STEP 4: CLAUDE-CODE FLAVOR (Runs if claude changed OR base changed OR manual)
+      # STEP 4: CLAUDE-CODE FLAVOR
       # ==============================================================================
       - name: Build and push Claude-Code flavor
         if: |
           github.event_name == 'workflow_dispatch' ||
           github.event_name == 'repository_dispatch' ||
           github.event_name == 'release' ||
-          steps: filter.outputs.base == 'true' ||
-          steps: filter.outputs.claude-code == 'true'
+          steps.filter.outputs.base == 'true' ||
+          steps.filter.outputs['claude-code'] == 'true'
         uses: docker/build-push-action@v6
         with:
           context: flavors/claude-code
@@ -224,8 +223,8 @@ jobs:
           github.event_name == 'workflow_dispatch' ||
           github.event_name == 'repository_dispatch' ||
           github.event_name == 'release' ||
-          steps: filter.outputs.base == 'true' ||
-          steps: filter.outputs.claude-code == 'true'
+          steps.filter.outputs.base == 'true' ||
+          steps.filter.outputs['claude-code'] == 'true'
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'image'
@@ -242,8 +241,8 @@ jobs:
             github.event_name == 'workflow_dispatch' ||
             github.event_name == 'repository_dispatch' ||
             github.event_name == 'release' ||
-            steps: filter.outputs.base == 'true' ||
-            steps: filter.outputs.claude-code == 'true'
+            steps.filter.outputs.base == 'true' ||
+            steps.filter.outputs['claude-code'] == 'true'
           )
         uses: github/codeql-action/upload-sarif@v3
         with:
