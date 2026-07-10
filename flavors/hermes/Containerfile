@@ -1,11 +1,11 @@
 # ==============================================================================
-# FLAVOR: Python / Nous Hermes Agent (Optimized Caching)
+# FLAVOR: Python / Nous Hermes Agent (Optimized Caching & Hardening)
 # ==============================================================================
 FROM ai-agent-sandbox:base
 
 USER root
 
-# LAYER 1: System-Pakete (Ändern sich quasi nie)
+# LAYER 1: System packages (Rarely change)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     python3-pip \
@@ -15,14 +15,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     npm \
     && rm -rf /var/lib/apt/lists/*
 
-# LAYER 2: Globales UV-Tool (Ändert sich nie)
+# LAYER 2: Global UV installation for rapid package management
 RUN pip3 install --no-cache-dir --break-system-packages uv
 
-# NEUER KOMBINIERTER LAYER 3 & 4: Download, Build und sofortiges Aufräumen
+# LAYER 3: Combined build layer - clone, install dependencies, upgrade vulnerabilities, and cleanup
 RUN git clone --depth 1 https://github.com/NousResearch/Hermes-Agent.git /tmp/hermes-repo && \
     uv pip install --system --break-system-packages /tmp/hermes-repo && \
+    # --- SECURITY UPGRADE: Overwrite vulnerable nested dependencies discovered by Trivy ---
+    uv pip install --system --break-system-packages -U litellm aiohttp cryptography pillow starlette && \
+    # -------------------------------------------------------------------------------------
     mkdir -p /usr/local/lib/python3.12/dist-packages/ui-tui && \
     cp -r /tmp/hermes-repo/ui-tui/* /usr/local/lib/python3.12/dist-packages/ui-tui/ && \
+    # Change into directory using WORKDIR style logic inside the subshell execution
     cd /usr/local/lib/python3.12/dist-packages/ui-tui && \
     npm install --silent --no-fund --no-audit --progress=false && \
     node scripts/build.mjs && \

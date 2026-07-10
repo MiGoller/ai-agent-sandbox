@@ -1,24 +1,30 @@
 # ==============================================================================
-# FLAVOR: Aider AI Pair Programmer
+# FLAVOR: Aider AI Pair Programmer (Optimized & Hardened)
 # ==============================================================================
 FROM ai-agent-sandbox:base
 
 USER root
 
-# LAYER 1: Python & Git (Git ist Pflicht für Aider, da es Commits schreibt!)
+# LAYER 1: Python & Git (Git is strictly required as Aider manages its own repository commits)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     python3-pip \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# LAYER 2: UV für schnellen Install nutzen
+# LAYER 2: Global UV installation for rapid package management
 RUN pip3 install --no-cache-dir --break-system-packages uv
 
-# LAYER 3: Aider installieren und Cache im selben Atemzug vernichten
+# LAYER 3: Combined installation layer - install aider, upgrade nested vulnerabilities, and cleanup
 RUN uv pip install --system --break-system-packages aider-chat && \
+    # --- SECURITY UPGRADE: Overwrite vulnerable nested dependencies discovered by Trivy ---
+    uv pip install --system --break-system-packages -U litellm aiohttp cryptography pillow starlette && \
+    # -------------------------------------------------------------------------------------
     rm -rf ~/.cache/uv
 
+# ==============================================================================
+# FINAL RUNTIME SETTINGS
+# ==============================================================================
 USER root
 WORKDIR /workspace
 CMD ["aider"]
