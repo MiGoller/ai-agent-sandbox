@@ -5,9 +5,7 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
-  # Allows manual triggering from the GitHub Actions UI
   workflow_dispatch:
-  # Allows triggering via external webhooks
   repository_dispatch:
     types: [ trigger-security-scan ]
 
@@ -15,7 +13,6 @@ jobs:
   static-analysis:
     name: Repository Static Scan
     runs-on: ubuntu-latest
-    # Permissions required to upload SARIF data to the GitHub Security Tab
     permissions:
       security-events: write
       contents: read
@@ -32,7 +29,7 @@ jobs:
           scan-ref: '.'
           format: 'sarif'
           output: 'trivy-results.sarif'
-          # Use '0' so the workflow doesn't fail here, allowing the upload step to run
+          # Always use '0' to guarantee that the SARIF report is generated and uploaded successfully
           exit-code: '0' 
           ignore-unfixed: true
           severity: 'CRITICAL,HIGH'
@@ -41,6 +38,6 @@ jobs:
       # Upload the SARIF file directly into GitHub's Native Security Dashboard
       - name: Upload Trivy scan results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
-        if: always() # Ensures results are uploaded even if previous steps failed
+        if: always() # Ensures reports are uploaded even if something else unexpected happens
         with:
           sarif_file: 'trivy-results.sarif'

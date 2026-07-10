@@ -1,0 +1,9 @@
+# Accept 'root' user since Podman runs completely rootless on the host.
+# Internal container root is mapped to an unprivileged host user.
+DS-0002
+
+# Accept manual 'cd' if it's explicitly required for specific chained scripts
+DS-0013
+
+# Containers run as short-lived AI agent sandboxes; continuous health checks are not needed
+DS-0026
