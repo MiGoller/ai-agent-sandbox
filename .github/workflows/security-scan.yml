@@ -1,0 +1,36 @@
+name: "🛡️ Security & Vulnerability Scan"
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  # Allows manual triggering from the GitHub Actions UI
+  workflow_dispatch:
+  # Allows triggering via external webhooks (e.g., from your home server)
+  repository_dispatch:
+    types: [ trigger-security-scan ]
+
+jobs:
+  static-analysis:
+    name: Repository Static Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Scan the repository filesystem before any build happens (Shift-Left Security)
+      - name: Run Trivy vulnerability scanner (FS Mode)
+        uses: aquasquad/trivy-action@v1
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'table'
+          # Fail the build (exit code 1) if high or critical vulnerabilities are found
+          exit-code: '1' 
+          # Skip vulnerabilities that do not have a registered fix yet
+          ignore-unfixed: true
+          severity: 'CRITICAL,HIGH'
+          # Look for vulnerabilities in dependencies, misconfigurations, and hardcoded secrets
+          scanners: 'vuln,misconfig,secret'
