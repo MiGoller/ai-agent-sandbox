@@ -13,9 +13,15 @@ on:
   # Allow manual triggering
   workflow_dispatch:
 
+  # Allow triggering via external webhooks (e.g., to rebuild images regularly)
+  repository_dispatch:
+    types: [ trigger-container-build ]
+
 permissions:
   contents: read
   packages: write
+  # REQUIRED: Allow uploading security results to the Security tab
+  security-events: write
 
 env:
   REGISTRY: ghcr.io
@@ -33,6 +39,7 @@ jobs:
       contents: read
       packages: write
       id-token: write
+      security-events: write # Required within the job context as well
 
     steps:
       - name: Checkout repository
@@ -48,7 +55,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
     
-      # Set up QEMU to enable multi-platform emulation (required for building arm64 on amd64 runners)
+      # Set up QEMU to enable multi-platform emulation
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
         with:
@@ -78,12 +85,30 @@ jobs:
           file: flavors/hermes/Containerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          # Instructs Buildx to map the local base image reference to the newly built GHCR image
           build-contexts: |
             ai-agent-sandbox:base=docker-image://ghcr.io/migoller/ai-agent-sandbox-base:latest
           tags: |
             ghcr.io/migoller/ai-agent-sandbox-hermes:latest
             ghcr.io/migoller/ai-agent-sandbox-hermes:${{ github.sha }}
+
+      # Step 2.5: Trivy Image Scan for Hermes
+      - name: Run Trivy scanner on Hermes image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: 'image'
+          image-ref: '${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ env.HERMES_IMAGE_NAME }}:latest'
+          format: 'sarif'
+          output: 'trivy-hermes-results.sarif'
+          exit-code: '0'
+          ignore-unfixed: true
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Hermes scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-hermes-results.sarif'
+          category: 'image-hermes'
 
       # Step 3: Build & Push Multi-Architecture Aider Flavor Image
       - name: Build and push Aider flavor
@@ -93,12 +118,30 @@ jobs:
           file: flavors/aider/Containerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          # Map the local base reference for dependency resolution
           build-contexts: |
             ai-agent-sandbox:base=docker-image://ghcr.io/migoller/ai-agent-sandbox-base:latest
           tags: |
             ghcr.io/migoller/ai-agent-sandbox-aider:latest
             ghcr.io/migoller/ai-agent-sandbox-aider:${{ github.sha }}
+
+      # Step 3.5: Trivy Image Scan for Aider
+      - name: Run Trivy scanner on Aider image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: 'image'
+          image-ref: '${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ env.AIDER_IMAGE_NAME }}:latest'
+          format: 'sarif'
+          output: 'trivy-aider-results.sarif'
+          exit-code: '0'
+          ignore-unfixed: true
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Aider scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-aider-results.sarif'
+          category: 'image-aider'
 
       # Step 4: Build & Push Multi-Architecture Claude-Code Flavor Image
       - name: Build and push Claude-Code flavor
@@ -108,14 +151,32 @@ jobs:
           file: flavors/claude-code/Containerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          # Map the local base reference for dependency resolution
           build-contexts: |
             ai-agent-sandbox:base=docker-image://ghcr.io/migoller/ai-agent-sandbox-base:latest
           tags: |
             ghcr.io/migoller/ai-agent-sandbox-claude-code:latest
             ghcr.io/migoller/ai-agent-sandbox-claude-code:${{ github.sha }}
+
+      # Step 4.5: Trivy Image Scan for Claude-Code
+      - name: Run Trivy scanner on Claude-Code image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: 'image'
+          image-ref: '${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ env.CLAUDE_IMAGE_NAME }}:latest'
+          format: 'sarif'
+          output: 'trivy-claude-results.sarif'
+          exit-code: '0'
+          ignore-unfixed: true
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Claude-Code scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-claude-results.sarif'
+          category: 'image-claude-code'
   
-      # 5. Generate Dynamic Release Summary (Directly visible in GitHub Actions UI)
+      # 5. Generate Dynamic Release Summary
       - name: Create release notes summary
         run: |
           {

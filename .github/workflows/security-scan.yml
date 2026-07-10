@@ -9,19 +9,22 @@ on:
   repository_dispatch:
     types: [ trigger-security-scan ]
 
+env:
+  REGISTRY: ghcr.io
+  IMAGE_OWNER: migoller
+
 jobs:
+  # Job 1: Our existing repository file scan
   static-analysis:
     name: Repository Static Scan
     runs-on: ubuntu-latest
     permissions:
       security-events: write
       contents: read
-    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Scan the repository and output findings as a SARIF file
       - name: Run Trivy vulnerability scanner (SARIF Mode)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
@@ -29,15 +32,44 @@ jobs:
           scan-ref: '.'
           format: 'sarif'
           output: 'trivy-results.sarif'
-          # Always use '0' to guarantee that the SARIF report is generated and uploaded successfully
           exit-code: '0' 
           ignore-unfixed: true
           severity: 'CRITICAL,HIGH'
           scanners: 'vuln,misconfig,secret'
 
-      # Upload the SARIF file directly into GitHub's Native Security Dashboard
       - name: Upload Trivy scan results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
-        if: always() # Ensures reports are uploaded even if something else unexpected happens
+        if: always()
         with:
           sarif_file: 'trivy-results.sarif'
+
+  # Job 2: New periodic scan for published GHCR images
+  registry-image-scan:
+    name: GHCR Registry Image Scan
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        flavor: [hermes, aider, claude-code]
+    steps:
+      # We don't even need to checkout the code here, we just pull and check the image directly!
+      - name: Run Trivy scanner on GHCR ${{ matrix.flavor }} image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: 'image'
+          image-ref: '${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/ai-agent-sandbox-${{ matrix.flavor }}:latest'
+          format: 'sarif'
+          output: 'trivy-${{ matrix.flavor }}-registry.sarif'
+          exit-code: '0'
+          ignore-unfixed: true
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Registry scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-${{ matrix.flavor }}-registry.sarif'
+          category: 'registry-${{ matrix.flavor }}'
