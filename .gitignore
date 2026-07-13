@@ -32,7 +32,8 @@ ai-agent-jail-*
 # LAUNCHER-SCRIPT INTERMEDIATE FILES
 # ---------------------------------------------------------------------------
 
-# Temporary files from run.sh
+# Launcher-script intermediate / debug files
+run-dry.sh
 *.log
 tmp/
 /*.log

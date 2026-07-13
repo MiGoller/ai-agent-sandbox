@@ -29,12 +29,29 @@ A simple `.gitignore` style file only helps with token clutter—**it is not a s
 The host system provides a centralized configuration directory that maps dynamically to the native standard directories expected by each tool inside the container:
 
 ```text
-Host System                               Container (Guest)
+Host System                                          Container (Guest)
 └── ~/.config/ai-agent-sandbox/
-    ├── hermes/       ───────────────►    /root/.hermes/
-    ├── aider/        ───────────────►    /root/.aider/
-    └── claude-code/  ───────────────►    /root/.claude-code/
+    ├── hermes/              ──────────────────────►   /root/.hermes/            (shared global store: skills, config, SOUL, state.db, auth)
+    │   └── projects/
+    │       └── <sha256-of-abs-path[:12]>/
+    │           └── memories/  ───────────────────►   /root/.hermes/memories/   (project-isolated: RAG/Memory, no cross-repo bleed)
+    │               └── USER.md (bind-mounted :ro from global)                  (persona, single source of truth)
+    ├── aider/               ──────────────────────►   /root/.aider/
+    │   └── projects/
+    │       └── <sha256-of-abs-path[:12]>/             (project-isolated history/cache)
+    └── claude-code/         ──────────────────────►   /root/.claude-code/
 ```
+
+### Project Isolation (Content-Bleed Prevention)
+
+The launcher scopes agent memory **per project directory**, not per tool. A short, collision-free project key (`sha256` of the project's absolute host path, truncated to 12 chars) isolates each repo's `memories/` store:
+
+- **Shared global store** — skills, config, persona source and tool state are mounted once for all projects (`/root/.hermes` inside the container).
+- **Project-isolated memory** — only `~/.hermes/memories` is mounted from `projects/<key>/memories`, shadowing the global folder via Podman sub-mount. Project-specific knowledge (RAG/Memory) therefore never leaks between repositories.
+- **Persona bind-mount** — the global `USER.md` is bind-mounted read-only (`USER.md:Z,ro`) into each project's `memories/`. This is a single source of truth: editing the global persona takes effect in every project immediately, with zero drift, and projects cannot overwrite it.
+- **`MEMORY.md` is deliberately NOT shared** — it holds per-project knowledge and stays isolated in each project store.
+
+> **Migration note:** Legacy installs stored the *entire* `.hermes` tree per project under `~/.config/ai-agent-sandbox/hermes/<dirname>/`. On first launch with the new layout, the launcher promotes the first such legacy store once to the shared global root (skills/config/persona preserved); its `MEMORY.md` is shadowed and does not bleed into the container.
 
 ### Repository Layout
 
@@ -123,6 +140,18 @@ The universal launcher script (`run.sh`) acts as a secure wrapper for your conta
 * `./run.sh --online` ➔ Enables host network mode (required for external API calls or local LLM proxies like LiteLLM).
 * `./run.sh --build` ➔ Enforces local compilation. It bypasses the GHCR registry and builds the container layers locally from your `flavors/` directories (ideal for tweaking or development).
 * `./run.sh --local` ➔ Switches agent memory from the global fallback (`~/.config/ai-agent-sandbox`) to a project-specific hidden folder (`.ai_agent_sandbox_data`) in your current directory.
+
+### Dry-Run / Debugging
+
+To inspect the exact `podman run` command (all volume mounts, env pass-through, network mode) **without starting a container**, generate a `sed`-modified copy of the launcher and run it:
+
+```bash
+# Preview the resolved podman command (no container is started)
+sed 's/^podman run /echo podman run /' run.sh > run-dry.sh && chmod +x run-dry.sh
+./run-dry.sh hermes --online
+```
+
+Use this to verify the per-project memory mounts (`projects/<key>/memories`) and the read-only persona bind-mount (`USER.md:Z,ro`) before launching for real. `run-dry.sh` is git-ignored.
 
 ### Custom Commands & Shell Access
 
