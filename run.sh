@@ -32,10 +32,9 @@ check_dependencies() {
     echo "✅ All dependencies verified"
 }
 
-# Rette das ursprüngliche Arbeitsverzeichnis des Users robust (funktioniert
-# sowohl beim direkten Aufruf von run.sh als auch über den Wrapper, der
-# ORIGINAL_PWD bereits setzt). Einmalig sichern, damit spätere cd-Aufrufe
-# den Wert nicht überschreiben.
+# Robustly rescue the user's original working directory (works both for a
+# direct run.sh invocation and via the wrapper, which already sets ORIGINAL_PWD).
+# Saved once so that later cd calls cannot overwrite the value.
 if [ -z "${ORIGINAL_PWD:-}" ]; then
     export ORIGINAL_PWD="$(pwd)"
 fi
@@ -212,46 +211,46 @@ while IFS='=' read -r name value; do
 done < <(env)
 
 # --- ISOLATION NAMESPACING ---
-# Bestimme den exakten Host-Pfad (robust über ORIGINAL_PWD, das in run.sh selbst
-# gerettet wurde, falls der Wrapper es nicht gesetzt hat).
+# Determine the exact host project path (robust via ORIGINAL_PWD, which run.sh
+# rescues itself if the wrapper did not set it).
 HOST_PROJECT_PATH="${ORIGINAL_PWD:-$(pwd)}"
 
-# Robuste, kollisionsfreie Projekt-ID: sha256-Hash des absoluten Pfads,
-# gekürzt auf 12 Zeichen. Stabil bei Ordner-Umbenennung und vermeidet
-# Kollisionen bei gleichnamigen Unterordnern in verschiedenen Elternpfaden.
+# Robust, collision-free project ID: sha256 hash of the absolute path,
+# truncated to 12 chars. Stable across directory renames and avoids collisions
+# for identically-named subdirs under different parent paths.
 PROJECT_KEY=$(printf '%s' "$HOST_PROJECT_PATH" | sha256sum | cut -c1-12)
 
-# --- CHIRURGISCHES MOUNTING ---
-# Wir mounten den globalen Hermes-Konfigurationsordner (Skills, config, SOUL,
-# state.db, auth) FÜR ALLE PROJEKTE GLEICH, überschatten aber gezielt NUR den
-# Memories-Ordner projektspezifisch. So bleiben Skills/Profile erhalten, während
-# projektspezifisches Wissen (RAG/Memory) sauber getrennt wird und kein
-# Content-Bleed zwischen Repos stattfindet.
+# --- SURGICAL MOUNTING ---
+# We mount the global Hermes config folder (skills, config, SOUL, state.db,
+# auth) SHARED across ALL projects, but shadow ONLY the Memories folder
+# project-specifically. This keeps skills/profiles intact while project-specific
+# knowledge (RAG/Memory) is cleanly separated and no content-bleed occurs
+# between repos.
 #
-# WICHTIG: Der globale Store bleibt bewusst am bisherigen Pfad ($DATA_DIR/$FLAVOR),
-# damit keine Datenmigration nötig ist und bestehende Global-Konfiguration erhalten
-# bleibt. Projektisolierte Memories liegen in einem neuen projects/-Unterordner.
+# IMPORTANT: The global store deliberately stays at the previous path
+# ($DATA_DIR/$FLAVOR), so no data migration is needed and the existing global
+# config is preserved. Project-isolated memories live in a new projects/ subdir.
 #
-# Podman überschattet den längeren Mount-Pfad (/root/.hermes/memories) über den
-# kürzeren (/root/.hermes) – beide können parallel gemountet werden.
-GLOBAL_DATA_DIR="$DATA_DIR/$FLAVOR"              # bestehender, geteilter Global-Store (Pfad bewusst unverändert)
-PROJECTS_BASE="$DATA_DIR/$FLAVOR/projects"       # projektisolierte Memory-Stores
-PROJ_DATA_DIR="$PROJECTS_BASE/$PROJECT_KEY"      # Store für genau dieses Projekt
+# Podman shadows the longer mount path (/root/.hermes/memories) over the
+# shorter one (/root/.hermes) -- both can be mounted in parallel.
+GLOBAL_DATA_DIR="$DATA_DIR/$FLAVOR"              # shared global store (path unchanged)
+PROJECTS_BASE="$DATA_DIR/$FLAVOR/projects"       # project-isolated memory stores
+PROJ_DATA_DIR="$PROJECTS_BASE/$PROJECT_KEY"      # store for exactly this project
 
 mkdir -p "$GLOBAL_DATA_DIR"
 
-# --- MIGRATION (einmalig) ---
-# Alte run.sh speicherte den KOMPLETTEN .hermes-Tree pro Projekt unter
-# $DATA_DIR/$FLAVOR/<dirname>/. Der neue Global-Store liegt auf der Wurzel
-# $DATA_DIR/$FLAVOR/. Diese alten per-Projekt-Stores liegen also ALS
-# UNTERORDNER in der Global-Wurzel -> die Wurzel ist nie leer, weshalb wir
-# HIER nicht auf "leer" prüfen, sondern gezielt nach Legacy-Unterordnern
-# (Typ: <dirname>/memories oder <dirname>/skills) suchen.
+# --- MIGRATION (one-time) ---
+# Old run.sh stored the COMPLETE .hermes tree per project under
+# $DATA_DIR/$FLAVOR/<dirname>/. The new global store lives at the root
+# $DATA_DIR/$FLAVOR/. These old per-project stores therefore sit AS SUBDIRS
+# inside the global root -> the root is never empty, which is why we do NOT
+# check for "empty" here, but instead look specifically for legacy subdirs
+# (of the form <dirname>/memories or <dirname>/skills).
 #
-# Wir befördern den ersten gefundenen Legacy-Store (der noch keine bereits
-# migrierten Root-Level-Skills besitzt) einmalig zur Global-Wurzel, damit
-# Skills/Config/Persona erhalten bleiben. MEMORY.md darin wird ohnehin durch
-# den projektisolerten Mount überschattet und bleedet nicht in den Container.
+# We promote the first legacy store found (which has no already-migrated
+# root-level skills) once to the global root, so skills/config/persona are
+# preserved. Its MEMORY.md is in any case shadowed by the project-isolated
+# mount and does not bleed into the container.
 if [ ! -d "$GLOBAL_DATA_DIR/skills" ] && [ ! -d "$GLOBAL_DATA_DIR/memories" ]; then
     OLD_STORE=$(find "$DATA_DIR/$FLAVOR" -maxdepth 1 -mindepth 1 -type d ! -name projects -print -quit 2>/dev/null)
     if [ -n "$OLD_STORE" ]; then
@@ -260,41 +259,42 @@ if [ ! -d "$GLOBAL_DATA_DIR/skills" ] && [ ! -d "$GLOBAL_DATA_DIR/memories" ]; t
     fi
 fi
 
-# Global-Volume nur mounten, wenn die Wurzel nach Migration/Seed befüllt ist.
-# Bleibt sie leer (wirklich frische Installation ohne alte Stores), verzichten
-# wir auf den Global-Mount und verlassen uns auf die image-eingebauten
-# Skills/Config, damit der erste Start nicht ohne Skills endet.
-# ACHTUNG: erst NACH Anlegen von projects/ prüfen (siehe unten), sonst würde
-# das projects/-Unterverzeichnis die Wurzel künstlich füllen.
+# Only mount the global volume if the root is populated after migration/seed.
+# If it stays empty (a truly fresh install with no legacy stores), we skip the
+# global mount and fall back to the image-built-in skills/config, so the first
+# start does not end up without skills.
+# CAUTION: decide this only AFTER creating projects/ (see below), otherwise the
+# projects/ subdir would artificially populate the root.
 MOUNT_GLOBAL=false
-# Erst JETZT den projektisolerten Store anlegen (nach der Leer-Prüfung oben,
-# sonst würde das projects/-Unterverzeichnis die Wurzel künstlich füllen und
-# MOUNT_GLOBAL fälschlich auf true setzen).
+# Create the project-isolated store only NOW (after the emptiness check above,
+# otherwise the projects/ subdir would artificially populate the root and set
+# MOUNT_GLOBAL to true incorrectly).
 mkdir -p "$PROJ_DATA_DIR/memories"
-# --- PERSONA BIND-MOUNT (statt cp-Seeding) ---
-# Hermes legt die globale User-Persona (USER.md) ebenfalls unter memories/ ab.
-# Da wir memories/ projektisolert überschatten, wäre die Persona sonst im Container
-# unsichtbar. Statt sie physisch in jeden Projekt-Store zu kopieren (Drift-Risiko),
-# bind-mounten wir die globale USER.md direkt an den Zielpfad im Container.
+# --- PERSONA BIND-MOUNT (instead of cp-seeding) ---
+# Hermes also stores the global user persona (USER.md) under memories/. Because
+# we shadow memories/ project-specifically, the persona would be invisible in
+# the container otherwise. Instead of copying it physically into every project
+# store (drift risk), we bind-mount the global USER.md directly to the target
+# path inside the container.
 #
-# Das ist die podman-native, SELinux-sichere Variante eines Symlinks: die Datei
-# gehoert zum globalen :Z-Volume (keine ueberschreitende Kategorie), der Container
-# sieht die IDENTISCHE Datei, und Aenderungen an der globalen Persona wirken sofort
-# in ALLEN Projekten (kein Drift). read-only, damit Projekte die globale Quelle
-# nicht ueberschreiben.
+# This is the podman-native, SELinux-safe alternative to a symlink: the file
+# belongs to the global :Z volume (no crossing category), the container sees
+# the IDENTICAL file, and changes to the global persona take effect
+# immediately in ALL projects (no drift). Read-only, so projects cannot
+# overwrite the global source.
 #
-# WICHTIG: Wir bind-mounten BEWUSST NICHT MEMORY.md (das projektspezifische Wissen)!
-# MEMORY.md enthaelt genau das Wissen, das bisher zwischen Repos gebleedet ist.
-# Es verbleibt projektisoliert im ueberschattenden memories/-Mount -> saubere
-# Trennung, das Wissen akkumuliert fortan isoliert je Projekt.
+# IMPORTANT: We deliberately do NOT bind-mount MEMORY.md (project-specific
+# knowledge)! MEMORY.md holds exactly the knowledge that previously bled
+# between repos. It stays project-isolated in the shadowing memories/ mount ->
+# clean separation, knowledge accumulates isolated per project.
 PERSONA_BIND=""
 if [ -f "$GLOBAL_DATA_DIR/memories/USER.md" ]; then
     PERSONA_BIND="-v $GLOBAL_DATA_DIR/memories/USER.md:/root/.hermes/memories/USER.md:Z,ro"
 fi
 
-# Erst JETZT (nach Anlegen von projects/ und Persona-Setup) entscheiden, ob der
-# Global-Mount erfolgt: die Wurzel muss echte Global-Daten enthalten (skills/
-# oder memories/), nicht nur das projects/-Subdir, das wir selbst erstellt haben.
+# Decide only NOW (after projects/ and persona setup) whether the global mount
+# happens: the root must contain real global data (skills/ or memories/), not
+# just the projects/ subdir we created ourselves.
 if [ -d "$GLOBAL_DATA_DIR/skills" ] || [ -d "$GLOBAL_DATA_DIR/memories" ]; then
     MOUNT_GLOBAL=true
 fi
@@ -312,7 +312,7 @@ fi
 echo "----------------------------------------"
 
 # --- DYNAMIC MAPPING TO NATIVE STANDARD DIRECTORIES ---
-# Hermes: globaler Store + projektisolierter Memories-Ordner (chirurgisch).
+# Hermes: shared global store + project-isolated Memories folder (surgical).
 if [ "$FLAVOR" = "hermes" ]; then
     VOLUME_FLAG=""
     if [ "$MOUNT_GLOBAL" = true ]; then
@@ -321,7 +321,7 @@ if [ "$FLAVOR" = "hermes" ]; then
     VOLUME_FLAG="$VOLUME_FLAG -v $PROJ_DATA_DIR/memories:/root/.hermes/memories:Z"
     VOLUME_FLAG="$VOLUME_FLAG $PERSONA_BIND"
 elif [ "$FLAVOR" = "aider" ]; then
-    # Aider: globaler Tool-Store, aber projektisolierte History/Cache-Daten
+    # Aider: shared global tool store, but project-isolated history/cache data
     VOLUME_FLAG=""
     if [ "$MOUNT_GLOBAL" = true ]; then
         VOLUME_FLAG="-v $GLOBAL_DATA_DIR:/root/.aider:Z"
@@ -332,7 +332,7 @@ elif [ "$FLAVOR" = "aider" ]; then
     ENV_FLAGS="$ENV_FLAGS -e AIDER_INPUT_HISTORY_FILE=/root/.aider/project/.aider.input.history"
     ENV_FLAGS="$ENV_FLAGS -e AIDER_CACHE_DIR=/root/.aider/project/.aider.tags.cache.v4"
 else
-    # Generischer Flavor: globaler Store + projektisolierter Daten-Unterordner
+    # Generic flavor: shared global store + project-isolated data subdir
     VOLUME_FLAG=""
     if [ "$MOUNT_GLOBAL" = true ]; then
         VOLUME_FLAG="-v $GLOBAL_DATA_DIR:/root/.$FLAVOR:Z"
