@@ -92,8 +92,10 @@ CONTAINER_CMD=""
 FLAVOR="$DEFAULT_FLAVOR"
 NETWORK_FLAG="--network none"
 ENV_FLAGS=""
+PODMAN_FLAGS=""
 FORCE_BUILD=false
 FLAVOR_SET=false
+SELINUX_SUFFIX=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -145,6 +147,11 @@ if [ -z "$CONTAINER_CMD" ]; then
     esac
 fi
 
+# Initialize the variable and check if SELinux is actively enforcing
+selinux_active=false
+type -p getenforce >/dev/null 2>&1 && [[ "$(getenforce)" == "Enforcing" ]] && selinux_active=true
+[[ "$selinux_active" = true ]] && SELINUX_SUFFIX=":Z"
+
 # ------------------------------------------------------------------------------
 # Execute Pre-Flight Validation (Phase 1)
 # ------------------------------------------------------------------------------
@@ -167,7 +174,7 @@ IMAGE_OWNER="migoller"
 # Map flavor name to its specific GHCR repository name
 case $FLAVOR in
     base)        IMAGE_REPO="ai-agent-sandbox-base" ;;
-    hermes)      IMAGE_REPO="ai-agent-sandbox-hermes" ;;
+    hermes)      IMAGE_REPO="hermes-agent-rootless" ;;
     aider)       IMAGE_REPO="ai-agent-sandbox-aider" ;;
     claude-code) IMAGE_REPO="ai-agent-sandbox-claude-code" ;;
     *)           IMAGE_REPO="ai-agent-sandbox-$FLAVOR" ;;
@@ -178,7 +185,7 @@ CONTAINER_NAME="ai-agent-jail-$(date +%s)"
 echo "🛡️  AI Agent Sandbox Launcher"
 echo "----------------------------------------"
 
-if [ "$FORCE_BUILD" = true ]; then
+if [[ "$IMAGE" == ai-agent-sandbox* ]] && [[ "$FORCE_BUILD" = true ]]; then
     echo "🛠️  Force-building flavor '$FLAVOR' locally..."
     
     # Ensure local base image exists for the build process
@@ -289,7 +296,12 @@ mkdir -p "$PROJ_DATA_DIR/memories"
 # clean separation, knowledge accumulates isolated per project.
 PERSONA_BIND=""
 if [ -f "$GLOBAL_DATA_DIR/memories/USER.md" ]; then
-    PERSONA_BIND="-v $GLOBAL_DATA_DIR/memories/USER.md:/root/.hermes/memories/USER.md:Z,ro"
+    MOUNT_OPTIONS=":ro"
+
+    # If SELinux is active, prepend 'Z,' to the existing options
+    [[ "$selinux_active" = true ]] && MOUNT_OPTIONS=":Z,${MOUNT_OPTIONS#:}"
+
+    PERSONA_BIND="-v $GLOBAL_DATA_DIR/memories/USER.md:/opt/data/memories/USER.md$MOUNT_OPTIONS"
 fi
 
 # Decide only NOW (after projects/ and persona setup) whether the global mount
@@ -301,8 +313,8 @@ fi
 
 echo "🚀 Launching AI Agent Sandbox..."
 echo "📂 Mounting project directory: $HOST_PROJECT_PATH"
-echo "🧠 Mounting global config:     $GLOBAL_DATA_DIR -> /root/.hermes (shared)"
-echo "🔒 Mounting project memory:    $PROJ_DATA_DIR/memories -> /root/.hermes/memories (isolated, key=$PROJECT_KEY)"
+echo "🧠 Mounting global config:     $GLOBAL_DATA_DIR"
+echo "🔒 Mounting project memory:    $PROJ_DATA_DIR/memories -> (isolated, key=$PROJECT_KEY)"
 echo "💻 Executing command:          $CONTAINER_CMD"
 if [ "$NETWORK_FLAG" = "--network host" ]; then
     echo "🌐 Network: ENABLED (Host Mode - Local proxies/MCP servers accessible)"
@@ -316,17 +328,21 @@ echo "----------------------------------------"
 if [ "$FLAVOR" = "hermes" ]; then
     VOLUME_FLAG=""
     if [ "$MOUNT_GLOBAL" = true ]; then
-        VOLUME_FLAG="-v $GLOBAL_DATA_DIR:/root/.hermes:Z"
+        VOLUME_FLAG="-v $GLOBAL_DATA_DIR:/opt/data${SELINUX_SUFFIX}"
     fi
-    VOLUME_FLAG="$VOLUME_FLAG -v $PROJ_DATA_DIR/memories:/root/.hermes/memories:Z"
+    VOLUME_FLAG="$VOLUME_FLAG -v $PROJ_DATA_DIR/memories:/opt/data/memories${SELINUX_SUFFIX}"
     VOLUME_FLAG="$VOLUME_FLAG $PERSONA_BIND"
+
+    ENV_FLAGS="$ENV_FLAGS -e HERMES_WRITE_SAFE_ROOT=/opt/data:$HOST_PROJECT_PATH"
+
+    PODMAN_FLAGS="$PODMAN_FLAGS --userns=keep-id:uid=1000,gid=1000"
 elif [ "$FLAVOR" = "aider" ]; then
     # Aider: shared global tool store, but project-isolated history/cache data
     VOLUME_FLAG=""
     if [ "$MOUNT_GLOBAL" = true ]; then
-        VOLUME_FLAG="-v $GLOBAL_DATA_DIR:/root/.aider:Z"
+        VOLUME_FLAG="-v $GLOBAL_DATA_DIR:/root/.aider${SELINUX_SUFFIX}"
     fi
-    VOLUME_FLAG="$VOLUME_FLAG -v $PROJ_DATA_DIR:/root/.aider/project:Z"
+    VOLUME_FLAG="$VOLUME_FLAG -v $PROJ_DATA_DIR:/root/.aider/project${SELINUX_SUFFIX}"
 
     ENV_FLAGS="$ENV_FLAGS -e AIDER_CHAT_HISTORY_FILE=/root/.aider/project/.aider.chat.history.md"
     ENV_FLAGS="$ENV_FLAGS -e AIDER_INPUT_HISTORY_FILE=/root/.aider/project/.aider.input.history"
@@ -335,19 +351,21 @@ else
     # Generic flavor: shared global store + project-isolated data subdir
     VOLUME_FLAG=""
     if [ "$MOUNT_GLOBAL" = true ]; then
-        VOLUME_FLAG="-v $GLOBAL_DATA_DIR:/root/.$FLAVOR:Z"
+        VOLUME_FLAG="-v $GLOBAL_DATA_DIR:/root/.$FLAVOR${SELINUX_SUFFIX}"
     fi
-    VOLUME_FLAG="$VOLUME_FLAG -v $PROJ_DATA_DIR:/root/.$FLAVOR/project:Z"
+    VOLUME_FLAG="$VOLUME_FLAG -v $PROJ_DATA_DIR:/root/.$FLAVOR/project${SELINUX_SUFFIX}"
 fi
 
 # Run container with project-isolated memory (chirurgical scoping) and matched
 # absolute host paths so the working directory inside the container matches the
 # host project path exactly.
+# cat << EOF
 podman run --rm -it \
   --name "$CONTAINER_NAME" \
-  $NETWORK_FLAG \
+  $PODMAN_FLAGS $NETWORK_FLAG \
   $ENV_FLAGS \
-  -v "$HOST_PROJECT_PATH":"$HOST_PROJECT_PATH":Z \
+  -v "$HOST_PROJECT_PATH":"$HOST_PROJECT_PATH${SELINUX_SUFFIX}" \
   $VOLUME_FLAG \
   -w "$HOST_PROJECT_PATH" \
   "$IMAGE_NAME" $CONTAINER_CMD
+# EOF

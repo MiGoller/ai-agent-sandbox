@@ -48,7 +48,7 @@ The launcher scopes agent memory **per project directory**, not per tool. A shor
 
 - **Shared global store** — skills, config, persona source and tool state are mounted once for all projects (`/root/.hermes` inside the container).
 - **Project-isolated memory** — only `~/.hermes/memories` is mounted from `projects/<key>/memories`, shadowing the global folder via Podman sub-mount. Project-specific knowledge (RAG/Memory) therefore never leaks between repositories.
-- **Persona bind-mount** — the global `USER.md` is bind-mounted read-only (`USER.md:Z,ro`) into each project's `memories/`. This is a single source of truth: editing the global persona takes effect in every project immediately, with zero drift, and projects cannot overwrite it.
+- **Persona bind-mount** — the global `USER.md` is bind-mounted read-only (`USER.md` with dynamic SELinux `:Z` flag when enforcing, plus `:ro`) into each project's `memories/`. This is a single source of truth: editing the global persona takes effect in every project immediately, with zero drift, and projects cannot overwrite it.
 - **`MEMORY.md` is deliberately NOT shared** — it holds per-project knowledge and stays isolated in each project store.
 
 > **Migration note:** Legacy installs stored the *entire* `.hermes` tree per project under `~/.config/ai-agent-sandbox/hermes/<dirname>/`. On first launch with the new layout, the launcher promotes the first such legacy store once to the shared global root (skills/config/persona preserved); its `MEMORY.md` is shadowed and does not bleed into the container.
@@ -151,7 +151,7 @@ sed 's/^podman run /echo podman run /' run.sh > run-dry.sh && chmod +x run-dry.s
 ./run-dry.sh hermes --online
 ```
 
-Use this to verify the per-project memory mounts (`projects/<key>/memories`) and the read-only persona bind-mount (`USER.md:Z,ro`) before launching for real. `run-dry.sh` is git-ignored.
+Use this to verify the per-project memory mounts (`projects/<key>/memories`) and the read-only persona bind-mount (`USER.md` with dynamic SELinux flag and `:ro`) before launching for real. `run-dry.sh` is git-ignored.
 
 ### Custom Commands & Shell Access
 
